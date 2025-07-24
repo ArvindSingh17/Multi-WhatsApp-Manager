@@ -1,0 +1,23 @@
+{
+  "name": "electrol-app",
+  "version": "1.0.0",
+  "main": "main.js",
+  "description": "",
+  "author": "",
+  "license": "ISC",
+  "scripts": {
+    "react-start": "cd Frontend/my && npm start",
+    "electron-start": "npx wait-on http://localhost:3000 && nodemon --exec electron .",
+    "dev": "concurrently \"npm run react-start\" \"npm run electron-start\""
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-svg-core": "^6.7.2",
+    "@heroicons/react": "^2.2.0",
+    "concurrently": "^9.2.0",
+    "electron": "^37.2.1",
+    "wait-on": "^7.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
