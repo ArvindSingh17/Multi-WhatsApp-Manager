@@ -64,7 +64,7 @@ ipcMain.handle('switch-whatsapp', (event, index) => {
   const view = views[index];
 
 
-  if (!view.webContents || view.webContents.isDestroyed()) {
+  if (!view || !view.webContents || view.webContents.isDestroyed()) {
     delete views[index];
     return;
   }
@@ -80,24 +80,29 @@ ipcMain.handle('delete-whatsapp', async (event, index) => {
   const view = views[index];
 
   try {
+    if (!view) {
+      console.warn(`No view found at index ${index}`);
+      return;
+    }
+
     if (mainWindow.getBrowserView() === view) {
       mainWindow.setBrowserView(null);
-      let see = session.fromPartition(`persist:wa-session-${index}`)
-      see.clearStorageData()
+      const currentSession = session.fromPartition(`persist:wa-session-${index}`);
+      await currentSession.clearStorageData();
     }
 
     if (view.webContents && !view.webContents.isDestroyed()) {
       view.webContents.destroy();
-      view.destroy();
     }
 
     delete views[index];
+    console.log(`View at index ${index} deleted.`);
+    
   } catch (err) {
     console.error(`Failed to delete view at index ${index}:`, err);
   }
-
-
 });
+
 
 
 
