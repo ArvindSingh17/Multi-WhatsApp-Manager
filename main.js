@@ -17,6 +17,21 @@ function createWindow() {
   mainWindow.maximize();
   mainWindow.setMenuBarVisibility(false);
   mainWindow.setAutoHideMenuBar(true);
+
+  mainWindow.on('resize',()=>{
+  const bounds = mainWindow.getBounds();
+  const reactSidebarWidth = 256;
+  const currentView = mainWindow.getBrowserView();
+  if (currentView) {
+    currentView.setBounds({
+      x:reactSidebarWidth,
+      y:0,
+      width:bounds.width-reactSidebarWidth,
+      height:bounds.height
+    })
+
+  }
+})
 }
 
 app.whenReady().then(() => {
@@ -27,31 +42,36 @@ app.whenReady().then(() => {
   });
 });
 
+
+
 ipcMain.handle('add-whatsapp', (event, index) => {
-  const userAgents = [
-    'Mozilla/5.0 Chrome/121.0.0.0',
-    'Mozilla/5.0 Firefox/115.0',
-    'Mozilla/5.0 Edg/115.0.0.0',
-    'Mozilla/5.0 Chrome/122.0.0.0 Safari/537.36'
-  ];
+    const sessionId = `persist:wa-session-${index}-${Date.now()}`;
   const view = new BrowserView({
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      session: session.fromPartition(`persist:wa-session-${index}`),
+      session: session.fromPartition(sessionId),
       contextIsolation: true,
       nodeIntegration: false,
-
     }
   });
 
   views[index] = view;
-  mainWindow.setBrowserView(view);
-  view.setBounds({ x: 250, y: 0, width: 1150, height: 900 });
-  const customUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+  const customUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.127 Safari/537.36";
 
-  view.webContents.loadURL('https://web.whatsapp.com', {
+  view.webContents.loadURL('https://web.whatsapp.com/', {
     userAgent: customUserAgent
   });
+
+mainWindow.setBrowserView(view);
+const { width, height } = mainWindow.getBounds();
+const reactSidebarWidth = 256;
+
+view.setBounds({
+  x: reactSidebarWidth,
+  y: 0,
+  width: width - reactSidebarWidth,
+  height: height
+});
 
   view.webContents.setWindowOpenHandler(({ url }) => {
     view.webContents.loadURL(url);
@@ -59,7 +79,7 @@ ipcMain.handle('add-whatsapp', (event, index) => {
   });
 });
 
-// SWITCH WHATSAPP
+// SWITCH WHATSAPP 
 ipcMain.handle('switch-whatsapp', (event, index) => {
   const view = views[index];
 
@@ -70,7 +90,17 @@ ipcMain.handle('switch-whatsapp', (event, index) => {
   }
 
   mainWindow.setBrowserView(view);
-  view.setBounds({ x: 250, y: 0, width: 1150, height: 900 });
+const bounds = mainWindow.getBounds();
+const { width, height } = mainWindow.getBounds();
+const reactSidebarWidth = 256;
+
+view.setBounds({
+  x: reactSidebarWidth,
+  y: 0,
+  width: width - reactSidebarWidth,
+  height: height
+});
+
   view.webContents.focus();
 });
 
@@ -80,28 +110,60 @@ ipcMain.handle('delete-whatsapp', async (event, index) => {
   const view = views[index];
 
   try {
-    if (!view) {
-      console.warn(`No view found at index ${index}`);
-      return;
-    }
+    if (!view) return;
 
-    if (mainWindow.getBrowserView() === view) {
-      mainWindow.setBrowserView(null);
-      const currentSession = session.fromPartition(`persist:wa-session-${index}`);
-      await currentSession.clearStorageData();
-    }
+    const wasActive = mainWindow.getBrowserView() === view;
+
+    // Clean session
+    const currentSession = session.fromPartition(`persist:wa-session-${index}`);
+    await currentSession.clearStorageData();
+    await currentSession.clearCache();
 
     if (view.webContents && !view.webContents.isDestroyed()) {
       view.webContents.destroy();
     }
 
     delete views[index];
-    console.log(`View at index ${index} deleted.`);
-    
+
+    // ✅ If it was active, switch to next available session
+    if (wasActive) {
+      const sortedIndexes = Object.keys(views).map(Number).sort();
+
+      for (const fallbackIndex of sortedIndexes) {
+        const fallbackView = views[fallbackIndex];
+        if (fallbackView && fallbackView.webContents && !fallbackView.webContents.isDestroyed()) {
+          mainWindow.setBrowserView(fallbackView);
+
+          const bounds = mainWindow.getBounds();
+          const sidebarWidth = 256;
+
+          fallbackView.setBounds({
+            x: sidebarWidth,
+            y: 0,
+            width: bounds.width - sidebarWidth,
+            height: bounds.height
+          });
+
+          fallbackView.webContents.focus();
+
+          // ✅ Notify frontend
+          event.sender.send('active-session-changed', fallbackIndex);
+
+          break; // ⛔ stop after finding first good session
+        }
+      }
+
+      //  No other valid views left
+      if (Object.keys(views).length === 0) {
+        mainWindow.setBrowserView(null);
+      }
+    }
+
   } catch (err) {
-    console.error(`Failed to delete view at index ${index}:`, err);
+    console.error(`Error deleting session ${index}:`, err);
   }
 });
+
 
 
 
